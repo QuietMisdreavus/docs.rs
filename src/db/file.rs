@@ -72,6 +72,10 @@ pub fn add_path_into_database<P: AsRef<Path>>(conn: &Connection,
     try!(cookie.load::<&str>(&[]));
 
     let trans = try!(conn.transaction());
+    let count = try!(trans.prepare("SELECT COUNT(*) FROM files WHERE path = $1"));
+    let insert = try!(trans.prepare("INSERT INTO files (path, mime, content) VALUES ($1, $2, $3)"));
+    let update = try!(trans.prepare("UPDATE files SET mime = $2, content = $3, date_updated = NOW() \
+                                     WHERE path = $1"));
 
     let mut file_list_with_mimes: Vec<(String, String)> = Vec::new();
 
@@ -111,15 +115,12 @@ pub fn add_path_into_database<P: AsRef<Path>>(conn: &Connection,
         };
 
         // check if file already exists in database
-        let rows = try!(conn.query("SELECT COUNT(*) FROM files WHERE path = $1", &[&path]));
+        let rows = try!(count.query(&[&path]));
 
         if rows.get(0).get::<usize, i64>(0) == 0 {
-            try!(trans.query("INSERT INTO files (path, mime, content) VALUES ($1, $2, $3)",
-                             &[&path, &mime, &content]));
+            try!(insert.execute(&[&path, &mime, &content]));
         } else {
-            try!(trans.query("UPDATE files SET mime = $2, content = $3, date_updated = NOW() \
-                              WHERE path = $1",
-                             &[&path, &mime, &content]));
+            try!(update.execute(&[&path, &mime, &content]));
         }
     }
 
