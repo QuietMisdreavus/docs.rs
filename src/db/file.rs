@@ -7,12 +7,45 @@
 
 use std::path::Path;
 use postgres::Connection;
+use postgres::types::{ToSql, VARCHAR, BYTEA};
 use rustc_serialize::json::{Json, ToJson};
 use std::fs::File;
 use std::io::Read;
 use error::Result;
 use failure::err_msg;
+use postgres_binary_copy::BinaryCopyReader;
+use streaming_iterator::convert_ref;
 
+mod sql_impls {
+    use postgres::types::{ToSql, IsNull, Type, VARCHAR, BYTEA};
+    use std::error::Error;
+
+    /// Wrapper around either a `String` or `Vec<u8>` that defers a `ToSql` implementation to the
+    /// inner value. Used to represent the columns of the `files` table to a `COPY FROM STDIN`
+    /// operation.
+    #[derive(Debug)]
+    pub enum FileCols {
+        VarChar(String),
+        ByteA(Vec<u8>),
+    }
+
+    impl ToSql for FileCols {
+        fn to_sql(&self, ty: &Type, out: &mut Vec<u8>)
+            -> Result<IsNull, Box<Error + 'static + Send + Sync>>
+        {
+            // FIXME(misdreavus): this can actually bite us if a VARCHAR were requested but our
+            // instance is a ByteA
+            match *self {
+                FileCols::VarChar(ref text) => text.to_sql(ty, out),
+                FileCols::ByteA(ref bytes) => bytes.to_sql(ty, out),
+            }
+        }
+
+        accepts!(VARCHAR, BYTEA);
+
+        to_sql_checked!();
+    }
+}
 
 fn file_path(prefix: &str, name: &str) -> String {
     match prefix.is_empty() {
@@ -61,25 +94,38 @@ pub fn get_file_list<P: AsRef<Path>>(path: P) -> Result<Vec<String>> {
     Ok(files)
 }
 
-
 /// Adds files into database and returns list of files with their mime type in Json
 pub fn add_path_into_database<P: AsRef<Path>>(conn: &Connection,
                                               prefix: &str,
                                               path: P)
                                               -> Result<Json> {
     use magic::{Cookie, flags};
+    use self::sql_impls::FileCols;
     let cookie = try!(Cookie::open(flags::MIME_TYPE));
     try!(cookie.load::<&str>(&[]));
 
     let trans = try!(conn.transaction());
-    let count = try!(trans.prepare("SELECT COUNT(*) FROM files WHERE path = $1"));
-    let insert = try!(trans.prepare("INSERT INTO files (path, mime, content) VALUES ($1, $2, $3)"));
-    let update = try!(trans.prepare("UPDATE files SET mime = $2, content = $3, date_updated = NOW() \
+    let _count = try!(trans.prepare("SELECT COUNT(*) FROM files WHERE path = $1"));
+    let _insert = try!(trans.prepare("INSERT INTO files (path, mime, content) VALUES ($1, $2, $3)"));
+    let _update = try!(trans.prepare("UPDATE files SET mime = $2, content = $3, date_updated = NOW() \
                                      WHERE path = $1"));
+    let delete = try!(trans.prepare("DELETE FROM files WHERE path = $1"));
+
+    let file_list = try!(get_file_list(&path));
+
+    if !prefix.is_empty() {
+        try!(trans.execute("DELETE FROM files WHERE path LIKE $1 || '%'", &[&prefix]));
+    } else {
+        for file_path_str in &file_list {
+            try!(delete.execute(&[file_path_str]));
+        }
+    }
 
     let mut file_list_with_mimes: Vec<(String, String)> = Vec::new();
+    let types = [VARCHAR, VARCHAR, BYTEA];
+    let mut data = Vec::new();
 
-    for file_path_str in try!(get_file_list(&path)) {
+    for file_path_str in file_list {
         let (path, content, mime) = {
             let path = Path::new(path.as_ref()).join(&file_path_str);
             // Some files have insufficient permissions (like .lock file created by cargo in
@@ -114,15 +160,26 @@ pub fn add_path_into_database<P: AsRef<Path>>(conn: &Connection,
             (file_path(prefix, &file_path_str), content, mime)
         };
 
-        // check if file already exists in database
-        let rows = try!(count.query(&[&path]));
+        data.push(FileCols::VarChar(path));
+        data.push(FileCols::VarChar(mime));
+        data.push(FileCols::ByteA(content));
 
-        if rows.get(0).get::<usize, i64>(0) == 0 {
-            try!(insert.execute(&[&path, &mime, &content]));
-        } else {
-            try!(update.execute(&[&path, &mime, &content]));
-        }
+        // // check if file already exists in database
+        // let rows = try!(count.query(&[&path]));
+
+        // if rows.get(0).get::<usize, i64>(0) == 0 {
+        //     try!(insert.execute(&[&path, &mime, &content]));
+        // } else {
+        //     try!(update.execute(&[&path, &mime, &content]));
+        // }
     }
+
+    let data = data.iter().map(|v| &*v as &ToSql);
+    let data = convert_ref(data);
+    let mut reader = BinaryCopyReader::new(&types, data);
+
+    let push = try!(trans.prepare("COPY files (path, mime, content) FROM STDIN (FORMAT binary)"));
+    try!(push.copy_in(&[], &mut reader));
 
     try!(trans.commit());
 

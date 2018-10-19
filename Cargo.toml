@@ -30,6 +30,8 @@ comrak = { version = "0.2.10", default-features = false }
 toml = "0.4"
 html5ever = "0.22"
 cargo = { git = "https://github.com/rust-lang/cargo.git" }
+postgres-binary-copy = "0.5"
+streaming-iterator = "0.1"
 
 # iron dependencies
 iron = "0.5"

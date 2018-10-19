@@ -5,10 +5,11 @@
 extern crate log;
 #[macro_use]
 extern crate failure;
+#[macro_use]
+extern crate postgres;
 extern crate cargo;
 extern crate regex;
 extern crate rustc_serialize;
-extern crate postgres;
 extern crate reqwest;
 extern crate time;
 extern crate semver;
@@ -29,6 +30,8 @@ extern crate crates_index_diff;
 extern crate git2;
 extern crate toml;
 extern crate html5ever;
+extern crate postgres_binary_copy;
+extern crate streaming_iterator;
 
 pub use self::docbuilder::DocBuilder;
 pub use self::docbuilder::ChrootBuilderResult;
