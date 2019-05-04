@@ -148,7 +148,7 @@ pub fn rustdoc_redirector_handler(req: &mut Request) -> IronResult<Response> {
 
     let router = extension!(req, Router);
     // this handler should never called without crate pattern
-    let crate_name = cexpect!(router.find("crate"));
+    let mut crate_name = cexpect!(router.find("crate")).to_string();
     let req_version = router.find("version");
 
     let conn = extension!(req, Pool);
@@ -157,7 +157,28 @@ pub fn rustdoc_redirector_handler(req: &mut Request) -> IronResult<Response> {
     // anyway
     let version = match match_version(&conn, &crate_name, req_version).into_option() {
         Some(v) => v,
-        None => return Err(IronError::new(Nope::CrateNotFound, status::NotFound)),
+        None => {
+            // it's common to typo between dashes and underscores, so try looking for a crate with
+            // them swapped out before bailing
+            let (retry_name, retry_version) = if crate_name.contains('-') {
+                let retry_name = crate_name.replace('-', "_");
+                let vers = match_version(&conn, &retry_name, req_version).into_option();
+                (Some(retry_name), vers)
+            } else if crate_name.contains('_') {
+                let retry_name = crate_name.replace('_', "-");
+                let vers = match_version(&conn, &retry_name, req_version).into_option();
+                (Some(retry_name), vers)
+            } else {
+                (None, None)
+            };
+
+            if let (Some(retry_name), Some(retry_version)) = (retry_name, retry_version) {
+                crate_name = retry_name;
+                retry_version
+            } else {
+                return Err(IronError::new(Nope::CrateNotFound, status::NotFound));
+            }
+        }
     };
 
     // get target name and whether it has docs
