@@ -31,6 +31,7 @@ extern crate toml;
 extern crate html5ever;
 extern crate schemamama;
 extern crate schemamama_postgres;
+extern crate textnonce;
 
 pub use self::docbuilder::DocBuilder;
 pub use self::docbuilder::ChrootBuilderResult;

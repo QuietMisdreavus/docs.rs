@@ -1,6 +1,6 @@
 {{> header}}
 
-<script type="text/javascript" charset="utf-8">
+<script type="text/javascript" charset="utf-8" {{#if varss.nonce}}nonce="{{varss.nonce}}"{{/if}}>
   function getKey(ev) {
     if ("key" in ev && typeof ev.key != "undefined") {
        return ev.key;
@@ -20,7 +20,7 @@
       <button type="submit" class="pure-button pure-button-normal" id="i-am-feeling-lucky-button">I'm Feeling Lucky</button>
     </div>
   </form>
-  <script type="text/javascript" charset="utf-8">
+  <script type="text/javascript" charset="utf-8" {{#if varss.nonce}}nonce="{{varss.nonce}}"{{/if}}>
     document.getElementById("i-am-feeling-lucky-button").onclick = function() {
       var form = document.getElementsByClassName("landing-search-form");
       var input = document.createElement('input');
@@ -55,7 +55,7 @@
       <a href="/releases"><strong>Recent Releases</strong></a> <a href="/releases/feed" title="Atom feed"><i class="fa fa-rss-square"></i></a>
     </div>
     {{else}}
-    <script type="text/javascript" charset="utf-8">
+    <script type="text/javascript" charset="utf-8" {{#if varss.nonce}}nonce="{{varss.nonce}}"{{/if}}>
     var active = null;
 
     function handleKey(ev) {

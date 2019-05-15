@@ -32,7 +32,7 @@ html5ever = "0.22"
 cargo = { git = "https://github.com/rust-lang/cargo.git" }
 schemamama = "0.3"
 schemamama_postgres = "0.2"
-
+textnonce = "=0.6.4" # not `0.6` because the rand it uses does not compile with the rustc on the prod server
 
 # iron dependencies
 iron = "0.5"

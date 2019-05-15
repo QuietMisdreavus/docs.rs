@@ -44,6 +44,7 @@ mod file;
 mod builds;
 mod error;
 mod sitemap;
+mod nonce;
 
 use std::{env, fmt};
 use std::borrow::Cow;
@@ -71,15 +72,18 @@ const OPENSEARCH_XML: &'static [u8] = include_bytes!("opensearch.xml");
 
 struct ContentSecurityPolicy;
 impl AfterMiddleware for ContentSecurityPolicy {
-    fn after(&self, _req: &mut Request, mut resp: Response) -> IronResult<Response> {
+    fn after(&self, req: &mut Request, mut resp: Response) -> IronResult<Response> {
         use utils::CspHeader;
+
+        let nonce = extension!(req, nonce::Nonce);
+        let script_src = format!("script-src 'self' cdnjs.cloudflare.com 'nonce-{}'", nonce);
 
         if !resp.headers.has::<CspHeader>() {
             let csp: Vec<Cow<'static, str>> = vec![
                 "default-src 'self'".into(),
                 "worker-src 'none'".into(),
                 "font-src 'self' cdnjs.cloudflare.com".into(),
-                "script-src 'self' cdnjs.cloudflare.com".into(),
+                script_src.into(),
                 "style-src 'self' cdnjs.cloudflare.com".into(),
                 "img-src *".into(),
             ];
@@ -112,6 +116,7 @@ impl CratesfyiHandler {
 
         let mut chain = Chain::new(base);
         chain.link_before(pool::Pool::new());
+        chain.link_before(nonce::Nonce);
         chain.link_after(hbse);
         chain.link_after(ContentSecurityPolicy);
         chain

@@ -2,6 +2,7 @@
 
 
 use super::{duration_to_str, match_version};
+use super::nonce::Nonce;
 use super::error::Nope;
 use super::page::Page;
 use super::pool::Pool;
@@ -313,8 +314,10 @@ fn get_search_results(conn: &Connection,
 
 pub fn home_page(req: &mut Request) -> IronResult<Response> {
     let conn = extension!(req, Pool);
+    let nonce = extension!(req, Nonce);
     let packages = get_releases(conn, 1, RELEASES_IN_HOME, Order::ReleaseTime);
     Page::new(packages)
+        .set("nonce", nonce)
         .set_true("show_search_form")
         .set_true("hide_package_navigation")
         .to_resp("releases")
@@ -323,8 +326,9 @@ pub fn home_page(req: &mut Request) -> IronResult<Response> {
 
 pub fn releases_feed_handler(req: &mut Request) -> IronResult<Response> {
     let conn = extension!(req, Pool);
+    let nonce = extension!(req, Nonce);
     let packages = get_releases(conn, 1, RELEASES_IN_FEED, Order::ReleaseTime);
-    let mut resp = ctry!(Page::new(packages).to_resp("releases_feed"));
+    let mut resp = ctry!(Page::new(packages).set("nonce", nonce).to_resp("releases_feed"));
     resp.headers.set(::iron::headers::ContentType("application/atom+xml".parse().unwrap()));
     Ok(resp)
 }
@@ -334,7 +338,8 @@ pub fn releases_handler(packages: Vec<Release>,
                         page_number: i64,
                         release_type: &str,
                         tab: &str,
-                        title: &str) -> IronResult<Response> {
+                        title: &str,
+                        nonce: &str) -> IronResult<Response> {
     if packages.is_empty() {
         return Err(IronError::new(Nope::CrateNotFound, status::NotFound));
     }
@@ -348,6 +353,7 @@ pub fn releases_handler(packages: Vec<Release>,
         .title("Releases")
         .set("description", title)
         .set("release_type", release_type)
+        .set("nonce", nonce)
         .set_true("show_releases_navigation")
         .set_true(tab)
         .set_bool("show_next_page_button", show_next_page)
@@ -362,32 +368,36 @@ pub fn releases_handler(packages: Vec<Release>,
 pub fn recent_releases_handler(req: &mut Request) -> IronResult<Response> {
     let page_number: i64 = extension!(req, Router).find("page").unwrap_or("1").parse().unwrap_or(1);
     let conn = extension!(req, Pool);
+    let nonce = extension!(req, Nonce);
     let packages = get_releases(conn, page_number, RELEASES_IN_RELEASES, Order::ReleaseTime);
-    releases_handler(packages, page_number, "recent", "releases_navigation_recent_tab", "Recently uploaded crates")
+    releases_handler(packages, page_number, "recent", "releases_navigation_recent_tab", "Recently uploaded crates", nonce)
 }
 
 
 pub fn releases_by_stars_handler(req: &mut Request) -> IronResult<Response> {
     let page_number: i64 = extension!(req, Router).find("page").unwrap_or("1").parse().unwrap_or(1);
     let conn = extension!(req, Pool);
+    let nonce = extension!(req, Nonce);
     let packages = get_releases(conn, page_number, RELEASES_IN_RELEASES, Order::GithubStars);
-    releases_handler(packages, page_number, "stars", "releases_navigation_stars_tab", "Crates with most stars")
+    releases_handler(packages, page_number, "stars", "releases_navigation_stars_tab", "Crates with most stars", nonce)
 }
 
 
 pub fn releases_recent_failures_handler(req: &mut Request) -> IronResult<Response> {
     let page_number: i64 = extension!(req, Router).find("page").unwrap_or("1").parse().unwrap_or(1);
     let conn = extension!(req, Pool);
+    let nonce = extension!(req, Nonce);
     let packages = get_releases(conn, page_number, RELEASES_IN_RELEASES, Order::RecentFailures);
-    releases_handler(packages, page_number, "recent-failures", "releases_navigation_recent_failures_tab", "Recent crates failed to build")
+    releases_handler(packages, page_number, "recent-failures", "releases_navigation_recent_failures_tab", "Recent crates failed to build", nonce)
 }
 
 
 pub fn releases_failures_by_stars_handler(req: &mut Request) -> IronResult<Response> {
     let page_number: i64 = extension!(req, Router).find("page").unwrap_or("1").parse().unwrap_or(1);
     let conn = extension!(req, Pool);
+    let nonce = extension!(req, Nonce);
     let packages = get_releases(conn, page_number, RELEASES_IN_RELEASES, Order::FailuresByGithubStars);
-    releases_handler(packages, page_number, "failures", "releases_navigation_failures_by_stars_tab", "Crates with most stars failed to build")
+    releases_handler(packages, page_number, "failures", "releases_navigation_failures_by_stars_tab", "Crates with most stars failed to build", nonce)
 }
 
 
@@ -414,6 +424,8 @@ pub fn author_handler(req: &mut Request) -> IronResult<Response> {
         return Err(IronError::new(Nope::CrateNotFound, status::NotFound));
     }
 
+    let nonce = extension!(req, Nonce);
+
     // Show next and previous page buttons
     // This is a temporary solution to avoid expensive COUNT(*)
     let (show_next_page, show_previous_page) = (packages.len() == RELEASES_IN_RELEASES as usize,
@@ -423,6 +435,7 @@ pub fn author_handler(req: &mut Request) -> IronResult<Response> {
         .set("description", &format!("Crates from {}", author_name))
         .set("author", &author_name)
         .set("release_type", author)
+        .set("nonce", nonce)
         .set_true("show_releases_navigation")
         .set_true("show_stars")
         .set_bool("show_next_page_button", show_next_page)
@@ -527,6 +540,7 @@ pub fn search_handler(req: &mut Request) -> IronResult<Response> {
             }
         }
 
+        let nonce = extension!(req, Nonce);
 
         let search_query = query.replace(" ", " & ");
         get_search_results(&conn, &search_query, 1, RELEASES_IN_RELEASES)
@@ -535,6 +549,7 @@ pub fn search_handler(req: &mut Request) -> IronResult<Response> {
                 // FIXME: There is no pagination
                 Page::new(results)
                     .set("search_query", &query)
+                    .set("nonce", nonce)
                     .title(&format!("Search results for '{}'", query))
                     .to_resp("releases")
             })
@@ -551,9 +566,11 @@ pub fn activity_handler(req: &mut Request) -> IronResult<Response> {
                          &[]))
             .get(0)
             .get(0);
+    let nonce = extension!(req, Nonce);
     Page::new(release_activity_data)
         .title("Releases")
         .set("description", "Monthly release activity")
+        .set("nonce", nonce)
         .set_true("show_releases_navigation")
         .set_true("releases_navigation_activity_tab")
         .set_true("javascript_highchartjs")
@@ -573,9 +590,11 @@ pub fn build_queue_handler(req: &mut Request) -> IronResult<Response> {
         crates.push((krate.get(0), krate.get(1)));
     }
     let is_empty = crates.is_empty();
+    let nonce = extension!(req, Nonce);
     Page::new(crates)
         .title("Build queue")
         .set("description", "List of crates scheduled to build")
+        .set("nonce", nonce)
         .set_bool("queue_empty", is_empty)
         .set_true("show_releases_navigation")
         .set_true("releases_queue_tab")
