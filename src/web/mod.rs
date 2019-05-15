@@ -46,11 +46,12 @@ mod error;
 mod sitemap;
 
 use std::{env, fmt};
+use std::borrow::Cow;
 use std::error::Error;
 use std::time::Duration;
 use std::path::PathBuf;
 use iron::prelude::*;
-use iron::{self, Handler, Url, status};
+use iron::{self, Handler, Url, status, AfterMiddleware};
 use iron::headers::{Expires, HttpDate, CacheControl, CacheDirective, ContentType};
 use iron::modifiers::Redirect;
 use router::{Router, NoRoute};
@@ -71,11 +72,19 @@ const OPENSEARCH_XML: &'static [u8] = include_bytes!("opensearch.xml");
 struct ContentSecurityPolicy;
 impl AfterMiddleware for ContentSecurityPolicy {
     fn after(&self, _req: &mut Request, mut resp: Response) -> IronResult<Response> {
-        if resp.headers.get(iron::headers::CONTENT_SECURITY_POLICY) == None {
-            resp.headers.insert(
-                iron::headers::CONTENT_SECURITY_POLICY,
-                "default-src 'self'; worker-src 'none'; font-src 'self' cdnjs.cloudflare.com; script-src 'self' cdnjs.cloudflare.com; style-src 'self' cdnjs.cloudflare.com; img-src *;".as_ref().parse().unwrap(),
-            );
+        use utils::CspHeader;
+
+        if !resp.headers.has::<CspHeader>() {
+            let csp: Vec<Cow<'static, str>> = vec![
+                "default-src 'self'".into(),
+                "worker-src 'none'".into(),
+                "font-src 'self' cdnjs.cloudflare.com".into(),
+                "script-src 'self' cdnjs.cloudflare.com".into(),
+                "style-src 'self' cdnjs.cloudflare.com".into(),
+                "img-src *".into(),
+            ];
+
+            resp.headers.set(CspHeader(csp));
         }
         Ok(resp)
     }
