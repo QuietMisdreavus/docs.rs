@@ -5,6 +5,8 @@
 extern crate log;
 #[macro_use]
 extern crate failure;
+#[macro_use]
+extern crate html5ever;
 extern crate cargo;
 extern crate regex;
 extern crate rustc_serialize;
@@ -28,7 +30,6 @@ extern crate badge;
 extern crate crates_index_diff;
 extern crate git2;
 extern crate toml;
-extern crate html5ever;
 extern crate schemamama;
 extern crate schemamama_postgres;
 extern crate textnonce;

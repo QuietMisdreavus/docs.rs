@@ -88,6 +88,7 @@ impl AfterMiddleware for ContentSecurityPolicy {
 
         let nonce = extension!(req, nonce::Nonce);
         let script_src = format!("script-src 'self' cdnjs.cloudflare.com 'nonce-{}'", nonce);
+        let style_src = format!("style-src 'self' cdnjs.cloudflare.com 'nonce-{}'", nonce);
 
         if !resp.headers.has::<CspHeader>() {
             let mut csp: Vec<Cow<'static, str>> = vec![
@@ -95,7 +96,7 @@ impl AfterMiddleware for ContentSecurityPolicy {
                 "worker-src 'none'".into(),
                 "font-src 'self' cdnjs.cloudflare.com".into(),
                 script_src.into(),
-                "style-src 'self' cdnjs.cloudflare.com".into(),
+                style_src.into(),
                 "img-src *".into(),
             ];
 

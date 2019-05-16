@@ -5,15 +5,21 @@ use html5ever::serialize::{serialize, SerializeOpts};
 use html5ever::rcdom::{RcDom, NodeData, Handle};
 use html5ever::driver::{parse_document, ParseOpts};
 use html5ever::tendril::TendrilSink;
+use html5ever::interface::{QualName, Attribute};
 
 /// Extracts the contents of the `<head>` and `<body>` tags from an HTML document, as well as the
 /// classes on the `<body>` tag, if any.
-pub fn extract_head_and_body(html: &str) -> Result<(String, String, String)> {
+pub fn extract_head_and_body(html: &str, nonce: &str) -> Result<(String, String, String)> {
     let parser = parse_document(RcDom::default(), ParseOpts::default());
     let dom = parser.one(html);
 
     let (head, body) = extract_from_rcdom(&dom)?;
     let class = extract_class(&body);
+
+    if !nonce.is_empty() {
+        add_nonces(&head, nonce);
+        add_nonces(&body, nonce);
+    }
 
     Ok((stringify(head), stringify(body), class))
 }
@@ -70,5 +76,34 @@ fn extract_class(node: &Handle) -> String {
                  .map_or(String::new(), |a| a.value.to_string())
         }
         _ => String::new()
+    }
+}
+
+fn add_nonces(node: &Handle, nonce: &str) {
+    if let NodeData::Element { ref name, ref attrs, .. } = node.data {
+        if &name.local == "style" || &name.local == "script" {
+            let mut attrs = attrs.borrow_mut();
+
+            if !attrs.iter().any(|a| &a.name.local == "src") {
+                let name = QualName::new(
+                    None,
+                    ns!(),
+                    local_name!("nonce"));
+                let new_attr = Attribute {
+                    name,
+                    value: nonce.to_string().into(),
+                };
+
+                attrs.push(new_attr);
+            }
+        }
+    }
+
+    // recurse on children, but not into "docblocks", i.e. converted user-provided markdown
+    let class = extract_class(node);
+    if class != "docblock" && class != "docblock-short" {
+        for child in node.children.borrow().iter() {
+            add_nonces(child, nonce);
+        }
     }
 }

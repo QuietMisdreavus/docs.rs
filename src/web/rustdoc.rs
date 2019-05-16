@@ -5,6 +5,7 @@ use super::pool::Pool;
 use super::file::File;
 use super::latest_version;
 use super::crate_details::CrateDetails;
+use super::nonce::Nonce;
 use iron::prelude::*;
 use iron::{status, Url};
 use iron::modifiers::Redirect;
@@ -230,7 +231,8 @@ pub fn rustdoc_html_server_handler(req: &mut Request) -> IronResult<Response> {
 
     let file_content = ctry!(String::from_utf8(file.content));
 
-    let (head, body, mut body_class) = ctry!(utils::extract_head_and_body(&file_content));
+    let nonce = extension!(req, Nonce);
+    let (head, body, mut body_class) = ctry!(utils::extract_head_and_body(&file_content, nonce));
     content.head = head;
     content.body = body;
 
