@@ -86,11 +86,11 @@ impl AfterMiddleware for ContentSecurityPolicy {
     fn after(&self, req: &mut Request, mut resp: Response) -> IronResult<Response> {
         use utils::CspHeader;
 
-        let nonce = extension!(req, nonce::Nonce);
-        let script_src = format!("script-src 'self' cdnjs.cloudflare.com 'nonce-{}'", nonce);
-        let style_src = format!("style-src 'self' cdnjs.cloudflare.com 'nonce-{}'", nonce);
-
         if !resp.headers.has::<CspHeader>() {
+            let nonce = extension!(req, nonce::Nonce);
+            let script_src = format!("script-src 'self' cdnjs.cloudflare.com 'nonce-{}'", nonce);
+            let style_src = format!("style-src 'self' cdnjs.cloudflare.com 'nonce-{}'", nonce);
+
             let mut csp: Vec<Cow<'static, str>> = vec![
                 "default-src 'self'".into(),
                 "worker-src 'none'".into(),
