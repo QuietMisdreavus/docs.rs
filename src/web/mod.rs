@@ -70,7 +70,18 @@ const STYLE_CSS: &'static str = include_str!(concat!(env!("OUT_DIR"), "/style.cs
 const OPENSEARCH_XML: &'static [u8] = include_bytes!("opensearch.xml");
 
 
-struct ContentSecurityPolicy;
+struct ContentSecurityPolicy {
+    force_upgrade: bool,
+}
+
+impl ContentSecurityPolicy {
+    fn new(force_upgrade: bool) -> Self {
+        ContentSecurityPolicy {
+            force_upgrade,
+        }
+    }
+}
+
 impl AfterMiddleware for ContentSecurityPolicy {
     fn after(&self, req: &mut Request, mut resp: Response) -> IronResult<Response> {
         use utils::CspHeader;
@@ -79,7 +90,7 @@ impl AfterMiddleware for ContentSecurityPolicy {
         let script_src = format!("script-src 'self' cdnjs.cloudflare.com 'nonce-{}'", nonce);
 
         if !resp.headers.has::<CspHeader>() {
-            let csp: Vec<Cow<'static, str>> = vec![
+            let mut csp: Vec<Cow<'static, str>> = vec![
                 "default-src 'self'".into(),
                 "worker-src 'none'".into(),
                 "font-src 'self' cdnjs.cloudflare.com".into(),
@@ -87,6 +98,10 @@ impl AfterMiddleware for ContentSecurityPolicy {
                 "style-src 'self' cdnjs.cloudflare.com".into(),
                 "img-src *".into(),
             ];
+
+            if self.force_upgrade {
+                csp.push("upgrade-insecure-requests".into());
+            }
 
             resp.headers.set(CspHeader(csp));
         }
@@ -118,7 +133,7 @@ impl CratesfyiHandler {
         chain.link_before(pool::Pool::new());
         chain.link_before(nonce::Nonce);
         chain.link_after(hbse);
-        chain.link_after(ContentSecurityPolicy);
+        chain.link_after(ContentSecurityPolicy::new(env::var_os("CRATESFYI_CSP_UPGRADE_REQUESTS").is_some()));
         chain
     }
 
