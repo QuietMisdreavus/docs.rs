@@ -253,6 +253,7 @@ impl RustwideBuilder {
                 let mut files_list = None;
                 let mut has_docs = false;
                 let mut successful_targets = Vec::new();
+                let mut is_proc_macro = false;
 
                 // Do an initial build and then copy the sources in the database
                 let res = self.execute_build(None, &build, &limits)?;
@@ -269,6 +270,8 @@ impl RustwideBuilder {
                     has_docs = if kind == Some("proc-macro") {
                         // proc-macros don't document into their target's directory, so pull docs
                         // out from the main `target/doc` dir instead
+                        is_proc_macro = true;
+
                         build
                             .host_target_dir()
                             .join("doc")
@@ -287,7 +290,11 @@ impl RustwideBuilder {
                 if has_docs {
                     debug!("adding documentation for the default target to the database");
                     self.copy_docs(
-                        &build.host_target_dir(),
+                        &if is_proc_macro {
+                            build.host_target_dir().to_path_buf()
+                        } else {
+                            build.host_target_dir().join(&res.target)
+                        },
                         local_storage.path(),
                         &res.target,
                         true,
@@ -307,7 +314,11 @@ impl RustwideBuilder {
                                     target
                                 );
                                 self.copy_docs(
-                                    &build.host_target_dir(),
+                                    &if is_proc_macro {
+                                        build.host_target_dir().to_path_buf()
+                                    } else {
+                                        build.host_target_dir().join(target)
+                                    },
                                     local_storage.path(),
                                     target,
                                     false,
@@ -439,8 +450,6 @@ impl RustwideBuilder {
         target: &str,
         is_default_target: bool,
     ) -> Result<()> {
-        let source = target_dir.join(target);
-
         let mut dest = local_storage.to_path_buf();
         // only add target name to destination directory when we are copying a non-default target.
         // this is allowing us to host documents in the root of the crate documentation directory.
@@ -451,8 +460,8 @@ impl RustwideBuilder {
             dest = dest.join(target);
         }
 
-        info!("{} {}", source.display(), dest.display());
-        copy_doc_dir(source, dest, self.rustc_version.trim())?;
+        info!("{} {}", target_dir.display(), dest.display());
+        copy_doc_dir(target_dir, &dest, self.rustc_version.trim())?;
         Ok(())
     }
 
