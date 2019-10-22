@@ -265,12 +265,23 @@ impl RustwideBuilder {
                         build.host_source_dir(),
                     )?);
 
-                    has_docs = build
-                        .host_target_dir()
-                        .join(&res.target)
-                        .join("doc")
-                        .join(name.replace("-", "_"))
-                        .is_dir();
+                    let kind = res.cargo_metadata.root().targets[0].kind.first().map(|s| &**s);
+                    has_docs = if kind == Some("proc-macro") {
+                        // proc-macros don't document into their target's directory, so pull docs
+                        // out from the main `target/doc` dir instead
+                        build
+                            .host_target_dir()
+                            .join("doc")
+                            .join(name.replace("-", "_"))
+                            .is_dir()
+                    } else {
+                        build
+                            .host_target_dir()
+                            .join(&res.target)
+                            .join("doc")
+                            .join(name.replace("-", "_"))
+                            .is_dir()
+                    };
                 }
 
                 if has_docs {
